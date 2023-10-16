@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>DC Cards</title>
+    <link rel="stylesheet" href="/resources/style.css" type="text/css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; padding-top: 5px;">
+        <div>
+            <input type="text" value="0" id="ScoreHero" placeholder="Héroes" style="width: 60px; margin-top: 5px; background-color: #6698c7; color: white"/>
+            <button onclick="incrementarHero()">+1</button>
+            <button onclick="decrementarHero()">-1</button>
+            <input type="text" value="0" id="ScoreVillano" placeholder="villanos" style="width: 60px; margin-top: 5px; background-color: #c76666; color: white"/>
+            <button onclick="incrementarVillano()">+1</button>
+            <button onclick="decrementarVillano()">-1</button>
+        </div>
+
+        <div>
+            <button class="" onclick="lanzarDados()">Lanzar Dados</button>
+            <!--BOTÓN TOKENS-->
+            <input type="file" id="fileInput0" multiple style="display:none"></input>
+            <button
+                class="btnGreen"
+                onclick="document.getElementById('fileInput0').click()">
+                Tokens
+            </button>
+            <!--BOTÓN MAZO HEROES-->
+            <input type="file" class="btnBlue" id="fileInput1" multiple style="display:none"></input>
+            <button
+                class="btnBlue"
+                onclick="document.getElementById('fileInput1').click()">
+                Cartas de Héroe
+            </button>
+            <!--BOTÓN MAZO VILLANOS-->
+            <input type="file" class="btnRed" id="fileInput2" multiple style="display:none"></input>
+            <button
+            class="btnRed"
+            onclick="document.getElementById('fileInput2').click()">
+                Cartas de Villano
+            </button>
+            <!--BOTÓN MAZO MEJORA-->
+            <input type="file" class="btnYellow" id="fileInput3" multiple style="display:none"></input>
+            <button
+            class="btnYellow"
+            onclick="document.getElementById('fileInput3').click()">
+                Cartas de Mejora
+            </button>
+
+            <button class="btnBorrar" onclick="borrarCartas()">Borrar Cartas</button>
+        </div>
+        <div>
+            <select id="historicoSelect"></select>
+        </div>
+    </div>
+
+    <div id="tablero" class="tapete"></div>
+    <div id="mazo_tokens"></div>
+    <div id="mazo_hero"></div>
+    <div id="mazo_villano"></div>
+    <div id="mazo_mejora"></div>
+
+    <script>
+	const socket = io.connect('http://localhost:80'); // ESTABLECE LA CONEXIÓN
+
+    //-----SCORE HÉROES Y VILLANOS------> ONLINE
+	function incrementarHero(){
+		scoreHeroe = document.getElementById("ScoreHero");
+		scoreHeroe.value = parseInt(scoreHeroe.value, 10)  + 1;
+		socket.emit('actualizarScoreHeroe', scoreHeroe.value); //Envía el cambio al servidor
+	} 
+	socket.on('actualizarScoreHeroe', (scoreHeroe) => { //Recibe cambios efectuados por otros clientes del servidor
+	document.getElementById('ScoreHero').value = scoreHeroe;
+	});
+	
+	function decrementarHero(){
+		scoreHeroe = document.getElementById("ScoreHero");
+		scoreHeroe.value = parseInt(scoreHeroe.value, 10)  - 1;
+		socket.emit('actualizarScoreHeroe', scoreHeroe.value); //Envía el cambio al servidor
+	}
+	socket.on('actualizarScoreHeroe', (scoreHeroe) => { //Recibe cambios efectuados por otros clientes del servidor
+	document.getElementById('ScoreHero').value = scoreHeroe;
+	});
+	function incrementarVillano(){
+		scoreVillano = document.getElementById("ScoreVillano");
+        scoreVillano.value = parseInt(scoreVillano.value, 10)  + 1;
+		socket.emit('actualizarScoreVillano', scoreVillano.value); //Envía el cambio al servidor
+	}
+	socket.on('actualizarScoreVillano', (scoreVillano) => { //Recibe cambios efectuados por otros clientes del servidor
+	document.getElementById('ScoreVillano').value = scoreVillano;
+	});
+	function decrementarVillano(){
+		scoreVillano = document.getElementById("ScoreVillano");
+        scoreVillano.value = parseInt(scoreVillano.value, 10)  - 1;
+		socket.emit('actualizarScoreVillano', scoreVillano.value); //Envía el cambio al servidor
+	}
+	socket.on('actualizarScoreVillano', (scoreVillano) => { //Recibe cambios efectuados por otros clientes del servidor
+	document.getElementById('ScoreVillano').value = scoreVillano;
+	});
+
+    //-----FUNCIONES ONLINE-----//
+
+    //-----DRAGGABLE CARDS------>
+
+    var tiradasHistorico = [];
+    var numTiradas = 0;
+
+    function makeDraggable(element) {
+    var isDragging = false;
+    var offsetX = 0;
+    var offsetY = 0;
+    var startX = 0;
+    var startY = 0;
+
+    element.addEventListener("mousedown", function (event) {
+        isDragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        offsetX = element.offsetLeft;
+        offsetY = element.offsetTop;
+        element.style.transition = "none";
+
+        // Incrementar el z-index de la carta al hacer clic en ella
+        socket.emit('topCard', { cardId: element.id }); 
+
+        socket.on('topCard', (data) => {
+            // Encuentra la carta correspondiente por su ID o identificador único
+            var element = document.getElementById(data.cardId);
+            // Asegúrate de que la carta existe y establece su z-index
+            if (element) {
+                element.style.zIndex = data.zIndex;
+            }
+        });
+
+        // Informar al servidor sobre el inicio del arrastre
+        const dragInfo = {
+            elementId: element.id, // Asegúrate de que element.id sea correcto
+            startX: startX,
+            startY: startY,
+            offsetX: offsetX,
+            offsetY: offsetY,
+        };
+
+        socket.emit('startDrag', dragInfo);
+        });
+
+        document.addEventListener("mousemove", function (event) {
+            if (isDragging) {
+                var diffX = event.clientX - startX;
+                var diffY = event.clientY - startY;
+                element.style.left = offsetX + diffX + "px";
+                element.style.top = offsetY + diffY + "px";
+
+                // Informar al servidor sobre la posición actualizada durante el arrastre
+                const dragInfo = {
+                    elementId: element.id,
+                    newX: element.style.left,
+                    newY: element.style.top,
+                };
+
+                socket.emit('dragging', dragInfo);
+            }
+        });
+
+        document.addEventListener("mouseup", function () {
+            if (isDragging) {
+                isDragging = false;
+                element.style.transition = "transform 0.3s";
+
+                // Informar al servidor sobre el final del arrastre
+                const dragInfo = {
+                    elementId: element.id,
+                    newX: element.style.left,
+                    newY: element.style.top,
+                };
+
+                socket.emit('endDrag', dragInfo);
+            }
+        });
+
+        // Manejar eventos del servidor para actualizar el arrastre en todos los clientes
+        socket.on('updateDrag', (dragInfo) => {
+            // Actualizar el estado del elemento en el cliente en función de la información recibida (updatedDragInfo)
+            // Puedes utilizar la información para mover y actualizar la posición del elemento arrastrado.
+            const draggedElement = document.getElementById(dragInfo.elementId);
+            if (draggedElement) {
+                draggedElement.style.left = dragInfo.newX;
+                draggedElement.style.top = dragInfo.newY;
+            }
+        });
+    }
+
+    function addZoomEffect(element) {
+        element.addEventListener("contextmenu", function (event) {
+            event.preventDefault();
+            element.classList.toggle("zoomed");
+        });
+    }
+
+    //--- TOKENS
+    var tokenid = 0;
+
+    function generateTokenId() {
+        tokenid++;
+        return 'token_00' + tokenid;
+    }
+
+    function cargarTokens(files) {
+        var mazo_tokens = document.getElementById("mazo_tokens");
+
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var reader = new FileReader();
+
+            reader.onload = (function (theFile) {
+                return function (e) {
+                    var imageUrl = e.target.result;
+                    socket.emit('cargarToken', imageUrl);
+                };
+            })(file);
+            reader.readAsDataURL(file); 
+        }
+    }
+
+    //--- CARGAR TOKENS SERVIDOR -> CLIENTE
+    socket.on('recargarToken', (imageUrl) => { // Recibe cambios efectuados por otros clientes del servidor
+        var token = document.createElement("div");
+        var uniqueId = generateTokenId(); // Genera un id único
+        token.id = uniqueId; // Asigna el id único al token
+        token.classList.add("token");
+        token.style.backgroundImage = "url(" + imageUrl + ")";
+        token.style.display = "block";
+        token.style.left = "88%";
+        token.style.top = "15%";
+        token.style.zIndex = 9999;
+        tablero.appendChild(token);
+        makeDraggable(token);
+
+        console.log('Otros clientes: Llega el token');
+    });
+
+    //----------------------------//
+    //---------MAZO HEROE---------//
+    //----------------------------//
+
+    var heroid = 0;
+
+    function generateHeroId() {
+        heroid++;
+        return 'hero_00' + heroid;
+    }
+
+    var mazo_hero = document.getElementById("mazo_hero");
+    var tablero = document.getElementById("tablero");
+
+    function cargarCartasHero(files) {
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var reader = new FileReader();
+
+            reader.onload = (function (theFile) {
+                return function (e) {
+                    var imageUrl = e.target.result;
+                    socket.emit('cargarHero', imageUrl);
+                };
+            })(file);
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    socket.on('cargarHero', (imageUrl) => {
+        var carta = document.createElement("div");
+        var uniqueId = generateHeroId();
+        carta.id = uniqueId;
+        carta.classList.toggle("backHero");
+        carta.classList.add("carta");
+        carta.style.backgroundImage = "url(" + imageUrl + ")";
+        mazo_hero.appendChild(carta);
+    });
+    
+    function sacarCartaHero() {
+        var randomNum = Math.floor(Math.random() * document.getElementById("mazo_hero").childElementCount) + 0;
+        socket.emit('sacarHero', randomNum);
+    }
+
+    socket.on('sacarHero', (randomNum) => {
+        var cartaBocaAbajo = document.getElementById("mazo_hero").children[randomNum];
+
+        if (cartaBocaAbajo) {
+            var carta = cartaBocaAbajo.cloneNode(true);
+            carta.style.position = "absolute";
+            carta.style.display = "block";
+            carta.style.left = "15%";
+            carta.style.top = "50%";
+            carta.style.zIndex = 9999;
+            carta.classList.toggle("backHero");
+            tablero.appendChild(carta);
+            makeDraggable(carta);
+            addZoomEffect(carta);
+
+            cartaBocaAbajo.remove();
+        }
+    });
+
+    //----------------------------//
+    //--------MAZO VILLANO--------//
+    //----------------------------//
+
+    var villanoid = 0;
+
+    function generateVillanoId() {
+        villanoid++;
+        return 'villano_00' + villanoid;
+    }
+
+    var mazo_villano = document.getElementById("mazo_villano");
+
+    function cargarCartasVillano(files) {
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var reader = new FileReader();
+
+            reader.onload = (function (theFile) {
+                return function (e) {
+                    var imageUrl = e.target.result;
+                    socket.emit('cargarVillano', imageUrl);
+                };
+            })(file);
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    socket.on('cargarVillano', (imageUrl) => {
+        var carta = document.createElement("div");
+        var uniqueId = generateVillanoId();
+        carta.id = uniqueId;
+        carta.classList.toggle("backVillano");
+        carta.classList.add("carta");
+        carta.style.backgroundImage = "url(" + imageUrl + ")";
+        mazo_villano.appendChild(carta);
+    });
+    
+    function sacarCartaVillano() {
+        var randomNum = Math.floor(Math.random() * document.getElementById("mazo_villano").childElementCount) + 0;
+        socket.emit('sacarVillano', randomNum);
+    }
+
+    socket.on('sacarVillano', (randomNum) => {
+        var cartaBocaAbajo = document.getElementById("mazo_villano").children[randomNum];
+
+        if (cartaBocaAbajo) {
+            var carta = cartaBocaAbajo.cloneNode(true);
+            carta.style.display = "block";
+            carta.style.left = "15%";
+            carta.style.top = "10%";
+            carta.style.zIndex = 9999;
+            carta.classList.toggle("backVillano");
+            tablero.appendChild(carta);
+            makeDraggable(carta);
+            addZoomEffect(carta);
+
+            // Eliminar la carta del mazo
+            cartaBocaAbajo.remove();
+        }
+    });
+
+    //----------------------------//
+    //--------MAZO MEJORA--------//
+    //----------------------------//
+
+    var mejoraid = 0;
+
+    function generateMejoraId() {
+        mejoraid++;
+        return 'mejora_00' + mejoraid;
+    }
+
+    var mazo_mejora = document.getElementById("mazo_mejora");
+
+    function cargarCartasMejora(files) {
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var reader = new FileReader();
+
+            reader.onload = (function (theFile) {
+                return function (e) {
+                    var imageUrl = e.target.result;
+                    socket.emit('cargarMejora', imageUrl);
+                };
+            })(file);
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    socket.on('cargarMejora', (imageUrl) => {
+        var carta = document.createElement("div");
+        var uniqueId = generateMejoraId();
+        carta.id = uniqueId;
+        carta.classList.toggle("backMejora");
+        carta.classList.add("carta");
+        carta.style.backgroundImage = "url(" + imageUrl + ")";
+        mazo_mejora.appendChild(carta);
+    });
+    
+    function sacarCartaMejora() {
+        var randomNum = Math.floor(Math.random() * document.getElementById("mazo_mejora").childElementCount) + 0;
+        socket.emit('sacarMejora', randomNum);
+    }
+
+    socket.on('sacarMejora', (randomNum) => {
+        var cartaBocaAbajo = document.getElementById("mazo_mejora").children[randomNum];
+
+        if (cartaBocaAbajo) {
+            var carta = cartaBocaAbajo.cloneNode(true);
+            carta.style.display = "block";
+            carta.style.left = "75%";
+            carta.style.top = "30%";
+            carta.style.zIndex = 9999;
+            carta.classList.toggle("backMejora");
+            tablero.appendChild(carta);
+            makeDraggable(carta);
+            addZoomEffect(carta);
+
+            cartaBocaAbajo.remove();
+        }
+    });
+
+    //----------------------------//
+    //--------LANZAR DADOS--------//
+    //----------------------------//
+
+    function lanzarDados() {
+        //1: HEROE, VILLANO, PODER HÉROE, PODER HÉROE, PODER VILLANO, PODER VILLANO
+        //2: HEROE, HEROE, VILLANO, VILLANO, MEJORA HÉROE, MEJORA VILLANO 
+        //3 y 4: HEROE, HEROE, HEROE, VILLANO, VILLANO, VILLANO
+        //Nuevos Dados v2
+        //1: HEROE, HEROE, VILLANO, VILLANO, PODER HEROE, PODER HEROE
+        //2: HEROE, HEROE, VILLANO, VILLANO, MEJORA HEROE, MEJORA HEROE
+        //3: HEROE, HEROE, VILLANO, VILLANO, PODER VILLANO, PODER VILLANO
+        //4: HEROE, HEROE, VILLANO, VILLANO, MEJORA VILLANO, MEJORA VILLANO
+        var resultado1;
+        var resultado2;
+        var resultado3;
+        var resultado4;
+        //DADO 1
+        var dado1 = Math.floor(Math.random() * 6) + 1;
+        switch (dado1) {
+            case 1:
+            case 2:
+                resultado1 = "Héroe";
+                break;
+            case 3:
+            case 4:
+                resultado1 = "Villano";
+                break;
+                case 5:
+            case 6:
+                resultado1 = "Poder Héroe";
+                break;
+        }
+        //DADO 2
+        var dado2 = Math.floor(Math.random() * 6) + 1;
+        switch (dado2) {
+            case 1:
+            case 2:
+                resultado2 = "Héroe";
+                break;
+            case 3:
+            case 4:
+                resultado2 = "Villano";
+                break;
+            case 5:
+            case 6:
+                resultado2 = "Mejora Héroe";
+                break;
+        }
+        //DADO 3
+        var dado3 = Math.floor(Math.random() * 6) + 1;
+        switch (dado1) {
+            case 1:
+            case 2:
+                resultado3 = "Héroe";
+                break;
+            case 3:
+            case 4:
+                resultado3 = "Villano";
+                break;
+            case 5:
+            case 6:
+                resultado3 = "Poder Villano";
+                break;
+        }
+        //DADO 4
+        var dado4 = Math.floor(Math.random() * 6) + 1;
+        switch (dado4) {
+            case 1:
+            case 2:
+                resultado4 = "Héroe";
+                break;
+            case 3:
+            case 4:
+                resultado4 = "Villano";
+                break;
+            case 5:
+            case 6:
+                resultado4 = "Mejora Villano";
+                break;
+        }
+        var resultados = resultado1 +" - "+ resultado2+" - "+resultado3+" - "+resultado4;
+        socket.emit('lanzarDados', resultados);
+    }
+
+    socket.on('lanzarDados', (resultados) => {
+        alert("Tirada: " + resultados);
+        var historicoSelect = document.getElementById("historicoSelect");
+        // Agregar resultado al historico
+        tiradasHistorico.unshift(resultados);
+        var option = document.createElement("option");
+        option.text = "Tirada " + (++numTiradas) + ": " + resultados;
+        historicoSelect.add(option, historicoSelect.options[0]);
+        historicoSelect.value = option.text;
+    });
+
+    //----------------------------//
+    //-------BORRAR TABLERO-------//
+    //----------------------------//
+
+    function borrarCartas() {
+        var tablero = document.getElementById("tablero");
+        tablero.innerHTML = "";
+    }
+
+    //----------------------------//
+    //-----------EVENTS-----------//
+    //----------------------------//
+
+    document.getElementById("fileInput0").addEventListener("change", function (event) {
+        cargarTokens(event.target.files);
+    });
+
+    document.getElementById("fileInput1").addEventListener("change", function (event) {
+        cargarCartasHero(event.target.files);
+    });
+
+    document.getElementById("fileInput2").addEventListener("change", function (event) {
+        cargarCartasVillano(event.target.files);
+    });
+
+    document.getElementById("fileInput3").addEventListener("change", function (event) {
+        cargarCartasMejora(event.target.files);
+    });
+
+    document.getElementById("mazo_tokens").addEventListener("click", function () {
+        sacarTokens();
+    });
+
+    document.getElementById("mazo_hero").addEventListener("click", function () {
+        sacarCartaHero();
+    });
+
+    document.getElementById("mazo_villano").addEventListener("click", function () {
+        sacarCartaVillano();
+    });
+
+    document.getElementById("mazo_mejora").addEventListener("click", function () {
+        sacarCartaMejora();
+    });
+    </script>
+</body>
+</html>
